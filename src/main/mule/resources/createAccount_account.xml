@@ -67,7 +67,7 @@ payload]]></ee:set-payload>
 output application/json
 ---
 {
-	"Subject": "Congratulations ! Account created",
+	"Subject": "Congratulations ! Account created for sure!!",
 	"Body": "Congratulations! Your account has been created successfully with Account Number " ++ vars.payloadRaw.accountNum ++ " with ICICI Bank"
 }]]></ee:set-payload>
 					</ee:message>
