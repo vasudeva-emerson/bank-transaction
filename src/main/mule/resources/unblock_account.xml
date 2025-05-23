@@ -1,0 +1,82 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<mule xmlns:db="http://www.mulesoft.org/schema/mule/db"
+	xmlns:ee="http://www.mulesoft.org/schema/mule/ee/core" xmlns="http://www.mulesoft.org/schema/mule/core"
+	xmlns:doc="http://www.mulesoft.org/schema/mule/documentation"
+	xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="
+http://www.mulesoft.org/schema/mule/ee/core http://www.mulesoft.org/schema/mule/ee/core/current/mule-ee.xsd http://www.mulesoft.org/schema/mule/core http://www.mulesoft.org/schema/mule/core/current/mule.xsd
+http://www.mulesoft.org/schema/mule/db http://www.mulesoft.org/schema/mule/db/current/mule-db.xsd">
+	<flow name="put:\unblock:application\json:bank_transaction-config">
+		<ee:transform doc:name="Transform Message" doc:id="aad98258-1503-4803-a577-59ff956996fe" >
+			<ee:message >
+				<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+---
+{
+	bank: payload.bank,
+	accountNum: payload.accountNum,
+}]]></ee:set-payload>
+			</ee:message>
+		</ee:transform>
+		<set-variable value="#[payload]" doc:name="payloadRaw" doc:id="2fef751a-da0c-4707-8801-ca36cfe55e4b" variableName="payloadRaw3" />
+		<db:select doc:id="4a3a9815-9eda-4dfb-8244-160e1d59c498" config-ref="Database_Config" doc:name="Select" >
+			<db:sql ><![CDATA[select * from bankDetails.Bank_Transactions where custAccNum = :accountNum and bankName = :bank]]></db:sql>
+			<db:input-parameters ><![CDATA[#[{
+	accountNum: vars.payloadRaw3.accountNum,
+	bank: vars.payloadRaw3.bank
+}]]]></db:input-parameters>
+		</db:select>
+		<set-variable value="#[payload]" doc:name="databaseRaw3" doc:id="79ea2408-2590-4346-b3e7-b3de45a3c703" variableName="databaseRaw3" />
+		<choice doc:name="Choice" doc:id="db024a5e-ce72-4127-91ff-8d9ac1eddf1c" >
+			<when expression="#[isEmpty(vars.databaseRaw3[0])]" >
+				<ee:transform doc:name="Transform Message" doc:id="cd35c66b-8014-4f86-be78-470dfd8c6515" >
+					<ee:message >
+						<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+---
+{
+	"message": "Account " ++ vars.payloadRaw3.accountNum ++ " does not exist! Enter Valid Details"
+}]]></ee:set-payload>
+					</ee:message>
+				</ee:transform>
+			</when>
+			<otherwise >
+				<choice doc:name="Choice" doc:id="ff71ceef-1a77-4913-bb78-82737db7fb96" >
+					<when expression='#[vars.databaseRaw3[0].accountStatus == "Active"]' >
+						<ee:transform doc:name="Transform Message" doc:id="66cdb646-04dd-4833-833e-7a862ae6ddf9" >
+							<ee:message >
+								<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+---
+{
+	"message": "Account " ++ vars.payloadRaw3.accountNum ++ " is already Active!"
+}]]></ee:set-payload>
+							</ee:message>
+						</ee:transform>
+					</when>
+					<otherwise >
+						<db:update doc:id="3fa88eda-4e56-4e17-a0e2-2d0aac457724" config-ref="Database_Config" doc:name="Update" >
+							<db:sql ><![CDATA[update bankDetails.Bank_Transactions
+set accountStatus = "Active", wrongPin = 0
+where custAccNum = :accountNum]]></db:sql>
+							<db:input-parameters ><![CDATA[#[{
+	accountNum: vars.payloadRaw3.accountNum
+}]]]></db:input-parameters>
+						</db:update>
+						<ee:transform doc:name="Transform Message" doc:id="ff7bb80f-7bb3-4c00-b6e5-732415e004a6" >
+							<ee:message >
+								<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+---
+{
+	"message": "Account " ++ vars.payloadRaw3.accountNum ++ " is Unblocked!"
+}]]></ee:set-payload>
+							</ee:message>
+						</ee:transform>
+					</otherwise>
+				</choice>
+			</otherwise>
+		</choice>
+
+    </flow>
+    </mule>

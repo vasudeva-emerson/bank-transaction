@@ -1,0 +1,91 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<mule xmlns:db="http://www.mulesoft.org/schema/mule/db"
+	xmlns:ee="http://www.mulesoft.org/schema/mule/ee/core" xmlns="http://www.mulesoft.org/schema/mule/core"
+	xmlns:doc="http://www.mulesoft.org/schema/mule/documentation"
+	xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="
+http://www.mulesoft.org/schema/mule/ee/core http://www.mulesoft.org/schema/mule/ee/core/current/mule-ee.xsd http://www.mulesoft.org/schema/mule/core http://www.mulesoft.org/schema/mule/core/current/mule.xsd
+http://www.mulesoft.org/schema/mule/db http://www.mulesoft.org/schema/mule/db/current/mule-db.xsd">
+	
+	<flow name="post:\createAccount:application\json:bank_transaction-config">
+		<ee:transform doc:name="Transform Message" doc:id="5e880243-de11-46a8-ace6-3c820f7d2c21" >
+			<ee:message >
+				<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+---
+{
+	customerName: attributes.queryParams.customerName,
+	bank: attributes.queryParams.bank,
+	bankType: attributes.queryParams.banktype,
+	branchName: attributes.queryParams.branchName,
+	accountNum: payload.accountNum,
+	atmPin: payload.atmPin,
+	ifscCode: payload.ifscCode,
+	depositAmount: payload.depositAmount,
+	mailId: payload.mailId,
+	contact: payload.contact
+}]]></ee:set-payload>
+			</ee:message>
+		</ee:transform>
+		<set-variable value="#[payload]" doc:name="payloadRaw" doc:id="300479f2-de1c-4b08-a637-f79bc9ec8b52" variableName="payloadRaw" />
+		<db:select doc:id="0789d413-8641-4a44-b20d-d1c02c0201b3" doc:name="Select" config-ref="Database_Config">
+			<db:sql ><![CDATA[select * from bankDetails.Bank_Transactions where custAccNum = :accountNum]]></db:sql>
+			<db:input-parameters ><![CDATA[#[{
+	accountNum: vars.payloadRaw.accountNum
+}]]]></db:input-parameters>
+		</db:select>
+		<ee:transform doc:name="Transform Message1" doc:id="bfdf0ca8-8b3f-4f89-8cdb-3f0564188e54" >
+			<ee:message >
+				<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+---
+payload]]></ee:set-payload>
+			</ee:message>
+		</ee:transform>
+		<set-variable value="#[payload]" doc:name="databaseRaw" doc:id="933867c2-4b88-44aa-a186-883d741e797d" variableName="databaseRaw" />
+		<choice doc:name="Choice" doc:id="f4d19388-5fc2-4be0-86a0-ca1fe73d6cb9" >
+			<when expression="#[isEmpty(vars.databaseRaw[0])]" >
+				<db:insert doc:id="ee50fcbe-a71a-4cc2-a6da-8e1752cc9891" doc:name="Insert" config-ref="Database_Config">
+					<db:sql><![CDATA[insert into bankDetails.Bank_Transactions(custName, custAccNum, atmPin, bankName, accountType, ifscCode, branchName,transactionTimeStamp, mailId, phoneNumber, totalBalance) values(:custName, :custAccNum, :atmPin, :bankName, :accountType, :ifscCode, :branchName, :transactionTimeStamp, :mailId, :phoneNumber, :totalBalance)]]></db:sql>
+					<db:input-parameters><![CDATA[#[{
+	custName: vars.payloadRaw.customerName,
+	custAccNum: vars.payloadRaw.accountNum,
+	atmPin: vars.payloadRaw.atmPin,
+	bankName: vars.payloadRaw.bank,
+	accountType: vars.payloadRaw.bankType,
+	ifscCode: vars.payloadRaw.ifscCode,
+	branchName: vars.payloadRaw.branchName,
+	transactionTimeStamp: now(),
+	mailId: vars.payloadRaw.mailId,
+	phoneNumber: vars.payloadRaw.contact,
+	totalBalance: (vars.databaseRaw[0].totalBalance  default 0) as Number + vars.payloadRaw.depositAmount
+}]]]></db:input-parameters>
+				</db:insert>
+				<ee:transform doc:name="Transform Message" doc:id="70ce4d8a-7cff-4b16-a620-1e2b3b8518ea">
+					<ee:message>
+						<ee:set-payload><![CDATA[%dw 2.0
+output application/json
+---
+{
+	"Subject": "Congratulations ! Account created",
+	"Body": "Congratulations! Your account has been created successfully with Account Number " ++ vars.payloadRaw.accountNum ++ " with ICICI Bank"
+}]]></ee:set-payload>
+					</ee:message>
+				</ee:transform>
+			</when>
+			<otherwise>
+				<ee:transform doc:name="Transform Message" doc:id="c0ac0c5a-cec9-4465-9561-bc6a08064f89">
+					<ee:message>
+						<ee:set-payload><![CDATA[%dw 2.0
+output application/json
+---
+{
+	"message": "Account " ++ vars.payloadRaw.accountNum ++ " already exists."
+}]]></ee:set-payload>
+					</ee:message>
+				</ee:transform>
+			</otherwise>
+		</choice>
+
+    </flow>
+	</mule>

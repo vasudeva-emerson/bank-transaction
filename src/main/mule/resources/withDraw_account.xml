@@ -1,0 +1,153 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<mule xmlns:db="http://www.mulesoft.org/schema/mule/db"
+	xmlns:ee="http://www.mulesoft.org/schema/mule/ee/core" xmlns="http://www.mulesoft.org/schema/mule/core"
+	xmlns:doc="http://www.mulesoft.org/schema/mule/documentation"
+	xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="
+http://www.mulesoft.org/schema/mule/ee/core http://www.mulesoft.org/schema/mule/ee/core/current/mule-ee.xsd http://www.mulesoft.org/schema/mule/core http://www.mulesoft.org/schema/mule/core/current/mule.xsd
+http://www.mulesoft.org/schema/mule/db http://www.mulesoft.org/schema/mule/db/current/mule-db.xsd">
+	<flow name="post:\withDraw:application\json:bank_transaction-config">
+		<ee:transform doc:name="Transform Message" doc:id="4ce14845-1feb-4ccc-bf53-46a278f3ca47" >
+			<ee:message >
+				<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+---
+{
+	bank: attributes.queryParams.bank,
+	bankType: attributes.queryParams.banktype,
+	accountNum: payload.accountNum,
+	atmPin: payload.atmPin,
+	amountWithdraw: payload.amountToBeWithdraw
+}]]></ee:set-payload>
+			</ee:message>
+		</ee:transform>
+		<set-variable value="#[payload]" doc:name="payloadRaw" doc:id="37046850-30f6-4cec-8e4a-bef5ce592fe0" variableName="payloadRaw2" />
+		<db:select doc:id="d113ab4b-9a38-45bd-9df1-9f33e86c37a4" config-ref="Database_Config" doc:name="Select" >
+			<db:sql ><![CDATA[select * from bankDetails.Bank_Transactions where custAccNum = :accountNum and bankName = :bank]]></db:sql>
+			<db:input-parameters ><![CDATA[#[{
+	accountNum: vars.payloadRaw2.accountNum,
+	bank: vars.payloadRaw2.bank
+}]]]></db:input-parameters>
+		</db:select>
+		<set-variable value="#[payload]" doc:name="databaseRaw" doc:id="5c58ab11-7795-4a25-abfa-714940ee7613" variableName="databaseRaw2" />
+		<choice doc:name="Choice" doc:id="9d589852-044d-433f-80af-6c24e7d4c67a" >
+			<when expression="#[isEmpty(vars.databaseRaw2[0])]" >
+				<ee:transform doc:name="Transform Message" doc:id="83003fec-f00c-4531-820f-b2b0a7f57472" >
+					<ee:message >
+						<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+---
+{
+	"message": "Account " ++ vars.payloadRaw2.accountNum ++ " does not exist! Enter Valid Details"
+}]]></ee:set-payload>
+					</ee:message>
+				</ee:transform>
+			</when>
+			<otherwise >
+				<choice doc:name="Choice" doc:id="d04d99e4-cbe2-415c-a68b-849f770d9729" >
+					<when expression='#[vars.databaseRaw2[0].accountStatus == "Active"]' >
+						<choice doc:name="Choice" doc:id="e3a7c0b2-b0d6-4d48-a9a7-05662b0f20f4" >
+							<when expression="#[vars.databaseRaw2[0].atmPin == vars.payloadRaw2.atmPin]" >
+								<choice doc:name="Choice" doc:id="4a06c1a7-409f-4a9f-b1b6-85a41da63151" >
+									<when expression="#[vars.databaseRaw2[0].totalBalance &gt; vars.payloadRaw2.amountWithdraw]" >
+										<db:update doc:id="570a9e1a-1d91-444a-937a-15af1ff6e361" config-ref="Database_Config" doc:name="Update" >
+											<db:sql ><![CDATA[update bankDetails.Bank_Transactions
+set totalBalance = :totalBalance - :amountwithdrawn
+where custAccNum = :accountNum]]></db:sql>
+											<db:input-parameters ><![CDATA[#[{
+	totalBalance: vars.databaseRaw2[0].totalBalance,
+	amountwithdrawn: vars.payloadRaw2.amountWithdraw,
+	accountNum: vars.payloadRaw2.accountNum
+}]]]></db:input-parameters>
+										</db:update>
+										<ee:transform doc:name="Transform Message" doc:id="4653811b-fb04-4894-9e38-4f45ad8d3d6e" >
+											<ee:message >
+												<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+---
+{
+	"status": "Amount " ++ vars.payloadRaw2.amountWithdraw ++ " is debited. Your total Balance is " ++ vars.databaseRaw2[0].totalBalance - vars.payloadRaw2.amountWithdraw
+}]]></ee:set-payload>
+											</ee:message>
+										</ee:transform>
+									</when>
+									<otherwise >
+										<ee:transform doc:name="Transform Message" doc:id="b36fd6dc-bf93-4162-951a-84442fb35a31" >
+											<ee:message >
+												<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+---
+{
+	"message": "Insufficient Funds"
+}]]></ee:set-payload>
+											</ee:message>
+										</ee:transform>
+									</otherwise>
+								</choice>
+							</when>
+							<otherwise >
+								<choice doc:name="Choice" doc:id="77c17f83-89d3-478f-8710-3ef087eeef45" >
+									<when expression="#[vars.databaseRaw2[0].wrongPin &gt;= 3]" >
+										<db:update doc:id="95d0a218-3a98-4260-87da-4370b1386c50" config-ref="Database_Config" doc:name="Update" >
+											<db:sql ><![CDATA[update bankDetails.Bank_Transactions
+set accountStatus = 'Blocked', wrongPin = :wrongPin + 1
+where custAccNum = :accountNum]]></db:sql>
+											<db:input-parameters ><![CDATA[#[{
+	wrongPin: vars.databaseRaw2[0].wrongPin,
+	accountNum: vars.payloadRaw2.accountNum
+}]]]></db:input-parameters>
+										</db:update>
+										<ee:transform doc:name="Transform Message" doc:id="b010a139-6e11-47fa-a8bf-4c72ff6b1f38" >
+											<ee:message >
+												<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+---
+{
+	"message": "Maximum Attempts reached .Your Account " ++ vars.payloadRaw2.accountNum ++ " is temporarily blocked. Please reach nearest Branch."
+}]]></ee:set-payload>
+											</ee:message>
+										</ee:transform>
+									</when>
+									<otherwise >
+										<db:update doc:id="9684cc06-77f1-422a-a288-6ebc14e042d9" config-ref="Database_Config" doc:name="Update" >
+											<db:sql ><![CDATA[update bankDetails.Bank_Transactions
+set wrongPin = :wrongPin + 1
+where custAccNum = :accountNum]]></db:sql>
+											<db:input-parameters ><![CDATA[#[{
+	wrongPin: vars.databaseRaw2[0].wrongPin,
+	accountNum: vars.payloadRaw2.accountNum
+}]]]></db:input-parameters>
+										</db:update>
+										<ee:transform doc:name="Transform Message" doc:id="723527bd-843c-401e-be37-6742283ba961" >
+											<ee:message >
+												<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+---
+{
+	"message": "Login Attempts Failed. Attempts remaining: " ++ 3 - ((vars.databaseRaw2[0].wrongPin  default 0) + 1)
+}]]></ee:set-payload>
+											</ee:message>
+										</ee:transform>
+									</otherwise>
+								</choice>
+							</otherwise>
+						</choice>
+					</when>
+					<otherwise >
+						<ee:transform doc:name="Transform Message" doc:id="d616120d-dada-49ad-936f-949dfba6b855" >
+							<ee:message >
+								<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+---
+{
+	"message": "Account " ++ vars.payloadRaw2.accountNum ++ " temporarily Blocked. Please visit nearets Branch"
+}]]></ee:set-payload>
+							</ee:message>
+						</ee:transform>
+					</otherwise>
+				</choice>
+			</otherwise>
+		</choice>
+
+    </flow>
+    </mule>
